@@ -7,13 +7,10 @@ import type {
   Announcement,
   DiscussionTopic,
   DiscussionEntry,
-  FileUploadResponse,
   ListCoursesParams,
   ListAssignmentsParams,
   ListModulesParams,
   ListAnnouncementsParams,
-  SubmitAssignmentParams,
-  SubmissionType,
 } from './types/canvas.js';
 
 interface CanvasClientConfig {
@@ -138,9 +135,9 @@ export class CanvasClient {
     courseId: number,
     params: ListAssignmentsParams = {}
   ): Promise<Assignment[]> {
-    const query = this.buildQueryString(params);
-    return this.request<Assignment[]>(
-      `/courses/${courseId}/assignments${query}`
+    return this.requestAllPages<Assignment>(
+      `/courses/${courseId}/assignments`,
+      params
     );
   }
 
@@ -169,109 +166,13 @@ export class CanvasClient {
     );
   }
 
-  async submitAssignment(
-    courseId: number,
-    assignmentId: number,
-    params: SubmitAssignmentParams
-  ): Promise<Submission> {
-    const body: Record<string, unknown> = {
-      submission: {
-        submission_type: params.submission_type,
-      },
-    };
-
-    if (params.body) {
-      body.submission = { ...body.submission as object, body: params.body };
-    }
-    if (params.url) {
-      body.submission = { ...body.submission as object, url: params.url };
-    }
-    if (params.file_ids) {
-      body.submission = { ...body.submission as object, file_ids: params.file_ids };
-    }
-
-    return this.request<Submission>(
-      `/courses/${courseId}/assignments/${assignmentId}/submissions`,
-      {
-        method: 'POST',
-        body: JSON.stringify(body),
-      }
-    );
-  }
-
-  // ==================== FILE UPLOADS ====================
-
-  async initiateFileUpload(
-    courseId: number,
-    assignmentId: number,
-    fileName: string,
-    fileSize: number,
-    contentType: string
-  ): Promise<FileUploadResponse> {
-    return this.request<FileUploadResponse>(
-      `/courses/${courseId}/assignments/${assignmentId}/submissions/self/files`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          name: fileName,
-          size: fileSize,
-          content_type: contentType,
-        }),
-      }
-    );
-  }
-
-  async uploadFileToUrl(
-    uploadUrl: string,
-    uploadParams: Record<string, string>,
-    fileContent: Uint8Array | string,
-    fileName: string,
-    contentType: string
-  ): Promise<{ id: number; url: string }> {
-    const formData = new FormData();
-    
-    // Add all upload params from Canvas
-    for (const [key, value] of Object.entries(uploadParams)) {
-      formData.append(key, value);
-    }
-    
-    // Convert to ArrayBuffer for Blob compatibility
-    let arrayBuffer: ArrayBuffer;
-    if (typeof fileContent === 'string') {
-      const encoder = new TextEncoder();
-      arrayBuffer = encoder.encode(fileContent).buffer as ArrayBuffer;
-    } else {
-      arrayBuffer = fileContent.buffer.slice(
-        fileContent.byteOffset,
-        fileContent.byteOffset + fileContent.byteLength
-      ) as ArrayBuffer;
-    }
-    
-    // Add the file
-    const blob = new Blob([arrayBuffer], { type: contentType });
-    formData.append('file', blob, fileName);
-
-    const response = await fetch(uploadUrl, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`File upload error: ${response.status} - ${errorBody}`);
-    }
-
-    return response.json();
-  }
-
   // ==================== MODULES ====================
 
   async listModules(
     courseId: number,
     params: ListModulesParams = {}
   ): Promise<Module[]> {
-    const query = this.buildQueryString(params);
-    return this.request<Module[]>(`/courses/${courseId}/modules${query}`);
+    return this.requestAllPages<Module>(`/courses/${courseId}/modules`, params);
   }
 
   async getModule(
@@ -290,9 +191,9 @@ export class CanvasClient {
     moduleId: number,
     include?: string[]
   ): Promise<ModuleItem[]> {
-    const query = include ? this.buildQueryString({ include }) : '';
-    return this.request<ModuleItem[]>(
-      `/courses/${courseId}/modules/${moduleId}/items${query}`
+    return this.requestAllPages<ModuleItem>(
+      `/courses/${courseId}/modules/${moduleId}/items`,
+      { include }
     );
   }
 
@@ -301,8 +202,7 @@ export class CanvasClient {
   async listAnnouncements(
     params: ListAnnouncementsParams
   ): Promise<Announcement[]> {
-    const query = this.buildQueryString(params);
-    return this.request<Announcement[]>(`/announcements${query}`);
+    return this.requestAllPages<Announcement>('/announcements', params);
   }
 
   // ==================== DISCUSSIONS ====================
@@ -311,9 +211,9 @@ export class CanvasClient {
     courseId: number,
     orderBy?: 'position' | 'recent_activity' | 'title'
   ): Promise<DiscussionTopic[]> {
-    const query = orderBy ? this.buildQueryString({ order_by: orderBy }) : '';
-    return this.request<DiscussionTopic[]>(
-      `/courses/${courseId}/discussion_topics${query}`
+    return this.requestAllPages<DiscussionTopic>(
+      `/courses/${courseId}/discussion_topics`,
+      { order_by: orderBy }
     );
   }
 
@@ -330,37 +230,8 @@ export class CanvasClient {
     courseId: number,
     topicId: number
   ): Promise<DiscussionEntry[]> {
-    return this.request<DiscussionEntry[]>(
+    return this.requestAllPages<DiscussionEntry>(
       `/courses/${courseId}/discussion_topics/${topicId}/entries`
-    );
-  }
-
-  async postDiscussionEntry(
-    courseId: number,
-    topicId: number,
-    message: string
-  ): Promise<DiscussionEntry> {
-    return this.request<DiscussionEntry>(
-      `/courses/${courseId}/discussion_topics/${topicId}/entries`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ message }),
-      }
-    );
-  }
-
-  async replyToDiscussionEntry(
-    courseId: number,
-    topicId: number,
-    entryId: number,
-    message: string
-  ): Promise<DiscussionEntry> {
-    return this.request<DiscussionEntry>(
-      `/courses/${courseId}/discussion_topics/${topicId}/entries/${entryId}/replies`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ message }),
-      }
     );
   }
 

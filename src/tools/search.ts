@@ -245,6 +245,15 @@ export function registerSearchTools(server: McpServer) {
           };
         }> = [];
 
+        // Courses whose assignments could not be fetched. These are reported
+        // back rather than dropped — a silently skipped course reads as
+        // "nothing due", which is the one answer this tool must never fake.
+        const failedCourses: Array<{
+          course_id: number;
+          course_name: string;
+          error: string;
+        }> = [];
+
         for (const course of courses) {
           try {
             const assignments = await client.getUpcomingAssignments(course.id, days_ahead);
@@ -265,9 +274,12 @@ export function registerSearchTools(server: McpServer) {
                 },
               });
             }
-          } catch {
-            // Skip courses where we can't fetch assignments
-            continue;
+          } catch (error) {
+            failedCourses.push({
+              course_id: course.id,
+              course_name: course.name,
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
         }
 
@@ -284,7 +296,13 @@ export function registerSearchTools(server: McpServer) {
             text: JSON.stringify({
               looking_ahead_days: days_ahead,
               total_count: allAssignments.length,
-              courses_checked: courses.length,
+              courses_found: courses.length,
+              courses_searched: courses.length - failedCourses.length,
+              complete: failedCourses.length === 0,
+              ...(failedCourses.length > 0 && {
+                warning: `Could not read assignments for ${failedCourses.length} of ${courses.length} courses. This list is INCOMPLETE — do not tell the user they are up to date.`,
+                failed_courses: failedCourses,
+              }),
               assignments: allAssignments,
             }, null, 2),
           }],

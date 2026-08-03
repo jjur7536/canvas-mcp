@@ -108,6 +108,9 @@ You should now see Canvas tools available in Claude!
 
 ## All Available Tools
 
+**This fork is read-only.** Every tool below only reads from Canvas. See
+[Fork changes](#fork-changes) for why the upstream write tools were removed.
+
 | Tool | What it does |
 |------|--------------|
 | `list_courses` | List your enrolled courses |
@@ -116,14 +119,10 @@ You should now see Canvas tools available in Claude!
 | `get_assignment` | Get full assignment details + rubric |
 | `get_rubric` | Get grading rubric for an assignment |
 | `get_submission` | View your submission and feedback |
-| `submit_assignment` | Submit text or URL to an assignment |
-| `upload_file` | Upload a file for submission |
 | `list_modules` | Browse course modules |
 | `list_announcements` | Get course announcements |
 | `list_discussions` | View discussion topics |
 | `get_discussion_entries` | Read discussion posts |
-| `post_discussion_entry` | Post to a discussion |
-| `reply_to_discussion` | Reply to a discussion post |
 | `find_assignments_by_due_date` | Find assignments in a date range |
 | `get_upcoming_assignments` | Get work due in the next N days |
 | `get_overdue_assignments` | Find past-due work |
@@ -131,6 +130,31 @@ You should now see Canvas tools available in Claude!
 | `get_all_upcoming_work` | Upcoming work across ALL courses |
 
 ---
+
+## Fork changes
+
+This fork diverges from `lucanardinocchi/canvas-mcp` in three ways.
+
+**1. Pagination on every list endpoint.** Canvas returns 10 items per page by
+default. Upstream only paginated `/courses`; every other list call took the
+first page and returned it as if it were the whole set — silently, with no
+error and no truncation marker. Verified against a real account: a course with
+20 assignments reported 10, and a course with 17 modules reported 10. That
+turns "am I missing any assignments?" into a confidently wrong "you're all
+caught up", which is the worst way for this tool to fail.
+
+**2. `get_all_upcoming_work` reports failed courses.** Upstream wrapped each
+course in `catch { continue }`, so a course that errored vanished from the
+results while still being counted in `courses_checked`. It now returns
+`complete`, `courses_searched`, and a `failed_courses` list.
+
+**3. Write tools removed.** Upstream shipped `submit_assignment`,
+`upload_file`, `post_discussion_entry`, and `reply_to_discussion`. An agent
+that misreads a prompt could submit coursework or post publicly under your
+name. These are deleted at the source — client methods included — rather than
+being blocked by config, so no permission slip can reinstate them.
+
+Run `node scripts/smoke-test.mjs` against a real token to re-verify all three.
 
 ## Troubleshooting
 
