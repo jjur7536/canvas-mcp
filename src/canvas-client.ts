@@ -11,6 +11,8 @@ import type {
   ListAssignmentsParams,
   ListModulesParams,
   ListAnnouncementsParams,
+  ListFilesParams,
+  FileAttachment,
 } from './types/canvas.js';
 
 interface CanvasClientConfig {
@@ -308,6 +310,51 @@ export class CanvasClient {
       const dueDate = new Date(a.due_at);
       return dueDate >= startDate && dueDate <= endDate;
     });
+  }
+
+  // ==================== FILES ====================
+
+  async listCourseFiles(
+    courseId: number,
+    params: ListFilesParams = {}
+  ): Promise<FileAttachment[]> {
+    return this.requestAllPages<FileAttachment>(`/courses/${courseId}/files`, params);
+  }
+
+  async getFile(fileId: number): Promise<FileAttachment> {
+    return this.request<FileAttachment>(`/files/${fileId}`);
+  }
+
+  /**
+   * Fetch a file's bytes. Canvas hands back a short-lived signed URL rather than
+   * serving content from the API host, and that URL carries its own verifier — so the
+   * download deliberately goes out without the Authorization header.
+   */
+  async downloadFile(fileId: number): Promise<{ file: FileAttachment; data: Uint8Array }> {
+    const file = await this.getFile(fileId);
+
+    if (file.locked_for_user) {
+      throw new Error(
+        `File ${fileId} ("${file.display_name}") is locked${
+          file.unlock_at ? ` until ${file.unlock_at}` : ''
+        }. ${file.lock_explanation ?? ''}`.trim()
+      );
+    }
+
+    if (!file.url) {
+      throw new Error(
+        `File ${fileId} ("${file.display_name}") has no download URL — it may be hidden or deleted.`
+      );
+    }
+
+    const response = await fetch(file.url);
+    if (!response.ok) {
+      throw new Error(
+        `Canvas file download failed: ${response.status} ${response.statusText} for file ${fileId}`
+      );
+    }
+
+    return { file, data: new Uint8Array(await response.arrayBuffer()) };
   }
 
   // ==================== USER INFO ====================

@@ -128,12 +128,37 @@ You should now see Canvas tools available in Claude!
 | `get_overdue_assignments` | Find past-due work |
 | `search_course_content` | Search modules and assignments |
 | `get_all_upcoming_work` | Upcoming work across ALL courses |
+| `list_course_files` | List a course's files (403s where the Files tab is hidden) |
+| `get_file` | File metadata, including lock/unlock state |
+| `read_file` | **Read a lecture PDF or `.docx` as text, by page** |
+| `download_file` | Save a file to disk |
+
+### Reading course material
+
+`read_file` is the one that makes the server useful for studying. Canvas serves files from a
+signed URL rather than the API host, so metadata alone leaves you unable to read anything.
+
+```
+list_modules(course_id: 74261)      → a File item's content_id IS the file_id
+read_file(file_id: 51641317, pages: "12-14")
+```
+
+PDFs come back page-addressable with `--- page N ---` markers, so an answer can cite
+"lecture 5, slide 12" and be checked. `.docx` tutorial sheets extract whole. Text extraction
+uses `unpdf` for PDFs and `mammoth` for `.docx`; anything else returns a clear error naming
+the format, and you can fall back to `download_file`.
+
+Locked files fail loudly with their unlock date rather than returning empty text — units gate
+tutorial solutions until partway through the week, and that gate is worth preserving.
+
+`list_course_files` 403s in units that hide the student Files tab, which is common. The error
+says so and points at `list_modules`, which always works.
 
 ---
 
 ## Fork changes
 
-This fork diverges from `lucanardinocchi/canvas-mcp` in three ways.
+This fork diverges from `lucanardinocchi/canvas-mcp` in four ways.
 
 **1. Pagination on every list endpoint.** Canvas returns 10 items per page by
 default. Upstream only paginated `/courses`; every other list call took the
@@ -154,7 +179,12 @@ that misreads a prompt could submit coursework or post publicly under your
 name. These are deleted at the source — client methods included — rather than
 being blocked by config, so no permission slip can reinstate them.
 
-Run `node scripts/smoke-test.mjs` against a real token to re-verify all three.
+**4. File reading added.** Upstream exposed no file tools at all, so lecture slides and
+tutorial sheets — the actual content of a unit — were unreachable. `read_file`,
+`download_file`, `get_file` and `list_course_files` close that gap. See
+[Reading course material](#reading-course-material).
+
+Run `node scripts/smoke-test.mjs` against a real token to re-verify the first three.
 
 ## Troubleshooting
 

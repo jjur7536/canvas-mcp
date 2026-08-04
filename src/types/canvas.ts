@@ -201,6 +201,14 @@ export interface FileAttachment {
   size: number;
   created_at: string;
   updated_at: string;
+  /** Present on course files; announcement attachments omit these. */
+  mime_class?: string;
+  locked?: boolean;
+  hidden?: boolean;
+  locked_for_user?: boolean;
+  unlock_at?: string | null;
+  lock_at?: string | null;
+  lock_explanation?: string;
 }
 
 export interface Module {
@@ -384,4 +392,13 @@ export interface ListAnnouncementsParams {
   end_date?: string;
   active_only?: boolean;
   latest_only?: boolean;
+}
+
+export interface ListFilesParams {
+  /** Substring match on the file name, applied by Canvas. */
+  search_term?: string;
+  /** Canvas mime-class filters, e.g. 'pdf', 'doc', 'ppt', 'image'. */
+  content_types?: string[];
+  sort?: 'name' | 'size' | 'created_at' | 'updated_at' | 'content_type';
+  order?: 'asc' | 'desc';
 }
