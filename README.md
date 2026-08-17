@@ -1,15 +1,99 @@
 # Canvas LMS MCP Server for Claude
 
-An MCP (Model Context Protocol) server that connects Claude to Canvas LMS, letting you manage your coursework through natural conversation.
+An MCP (Model Context Protocol) server that connects Claude to Canvas LMS, letting you read your
+coursework — assignments, modules, announcements, and **the lecture PDFs and tutorial sheets
+themselves** — through natural conversation.
 
 **Ask Claude things like:**
 - "What assignments do I have due this week?"
+- "Read me pages 10-14 of the week 5 lecture"
 - "Show me the rubric for my essay assignment"
 - "What did my professor say in the feedback?"
-- "List all my courses"
 - "Are there any overdue assignments?"
 
-## Quick Start
+This is a **read-only fork** of [`lucanardinocchi/canvas-mcp`](https://github.com/lucanardinocchi/canvas-mcp)
+with pagination fixes, honest error reporting, and file reading added. See
+[Fork changes](#fork-changes).
+
+---
+
+## Install (agent-executable)
+
+If you are an AI agent setting this up for a user, run these steps in order. Everything below
+is deterministic except the two values the user must supply (`CANVAS_API_TOKEN`,
+`CANVAS_BASE_URL`) — ask for those, never guess them.
+
+```bash
+# 1. Clone and build (requires Node >= 18)
+git clone https://github.com/jjur7536/canvas-mcp.git ~/dev/canvas-mcp
+cd ~/dev/canvas-mcp
+npm install
+npm run build          # dist/ is gitignored — this step is REQUIRED
+
+# 2. Sanity check: the server must exit 1 with a clear message when unconfigured
+node dist/index.js     # expect: "Error: Missing required environment variables: ..."
+```
+
+**3. Get the user's Canvas API token** (they must do this themselves — it is a secret):
+Canvas → profile picture → **Settings** → **Approved Integrations** → **+ New Access Token** →
+name it "Claude", set an expiry, **Generate Token**, copy it once.
+
+**4. Determine `CANVAS_BASE_URL`** — the origin the user sees when logged into Canvas, with no
+trailing slash. Examples: `https://canvas.sydney.edu.au`, `https://canvas.instructure.com`.
+
+**5. Register the server** with whichever client the user runs:
+
+<details open>
+<summary><b>Claude Code (CLI)</b></summary>
+
+```bash
+claude mcp add canvas \
+  --scope user \
+  --env CANVAS_API_TOKEN=THE_TOKEN \
+  --env CANVAS_BASE_URL=https://your-school.instructure.com \
+  -- node /absolute/path/to/canvas-mcp/dist/index.js
+```
+
+`--scope user` makes it available in every project. Use `--scope project` to share it via a
+repo's `.mcp.json` instead — but never commit a token; use `${CANVAS_API_TOKEN}` expansion and
+set the variable in the shell. Verify with `claude mcp list`.
+</details>
+
+<details>
+<summary><b>Claude Desktop</b></summary>
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or
+`%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "canvas": {
+      "command": "node",
+      "args": ["/FULL/PATH/TO/canvas-mcp/dist/index.js"],
+      "env": {
+        "CANVAS_API_TOKEN": "THE_TOKEN",
+        "CANVAS_BASE_URL": "https://your-school.instructure.com"
+      }
+    }
+  }
+}
+```
+
+Then quit Claude Desktop **completely** (Cmd+Q / Alt+F4) and reopen it.
+</details>
+
+**6. Verify end to end.** Ask the client to call `list_courses`. A non-empty list means the
+token and base URL are both right. A `401` means the token is wrong; a network error means the
+base URL is wrong.
+
+**WSL note:** if the user runs Claude Code inside WSL, clone and build inside WSL and give the
+Linux path (`/home/<user>/dev/canvas-mcp/dist/index.js`). A Windows client cannot execute a
+`\\wsl$\...` path reliably.
+
+---
+
+## Quick Start (manual)
 
 ### 1. Get Your Canvas API Token
 
@@ -24,7 +108,7 @@ An MCP (Model Context Protocol) server that connects Claude to Canvas LMS, letti
 
 ```bash
 # Clone this repository
-git clone https://github.com/lucanardinocchi/canvas-mcp.git
+git clone https://github.com/jjur7536/canvas-mcp.git
 cd canvas-mcp
 
 # Install dependencies
@@ -90,14 +174,17 @@ You should now see Canvas tools available in Claude!
 - Check your grades and submission status
 
 ### 💬 Discussions
-- View discussion boards
-- Post new discussion entries
-- Reply to classmates
+- View discussion boards and read posts
+- Read course announcements
 
 ### 📤 Submissions
-- Submit text assignments directly
-- Upload files for submission
-- View instructor feedback and comments
+- View your submission status and grade
+- Read instructor feedback and comments
+
+### 📄 Files
+- Browse course modules and the files attached to them
+- **Read a lecture PDF or `.docx` as text, page by page**
+- Download a file to disk
 
 ### 🔍 Search
 - Find assignments by due date
@@ -189,9 +276,10 @@ Run `node scripts/smoke-test.mjs` against a real token to re-verify the first th
 ## Troubleshooting
 
 ### "Canvas tools not showing up"
-1. Make sure you restarted Claude Desktop completely
-2. Check that the path in your config is correct
-3. Verify your `claude_desktop_config.json` is valid JSON
+1. Did you run `npm run build`? `dist/` is gitignored, so a fresh clone has no server to run.
+2. Make sure you restarted Claude Desktop completely (Claude Code: `claude mcp list`)
+3. Check that the path in your config is **absolute** and points at `dist/index.js`
+4. Verify your `claude_desktop_config.json` is valid JSON
 
 ### "401 Unauthorized" errors
 Your API token is invalid or expired. Generate a new one in Canvas settings.
@@ -234,17 +322,21 @@ npm run dev
 canvas-mcp/
 ├── src/
 │   ├── index.ts           # MCP server entry point
-│   ├── canvas-client.ts   # Canvas API wrapper
+│   ├── canvas-client.ts   # Canvas API wrapper (handles pagination)
+│   ├── extract.ts         # PDF/.docx → page-addressable text
 │   ├── tools/             # Tool implementations
 │   │   ├── courses.ts
 │   │   ├── assignments.ts
 │   │   ├── submissions.ts
 │   │   ├── discussions.ts
 │   │   ├── modules.ts
+│   │   ├── files.ts       # read_file / download_file / get_file
 │   │   └── search.ts
 │   └── types/
 │       └── canvas.ts      # TypeScript types
-├── dist/                  # Compiled output
+├── scripts/
+│   └── smoke-test.mjs     # verifies pagination + failure reporting
+├── dist/                  # Compiled output (gitignored — run `npm run build`)
 ├── package.json
 └── tsconfig.json
 ```
