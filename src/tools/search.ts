@@ -167,7 +167,8 @@ export function registerSearchTools(server: McpServer) {
     'search_course_content',
     {
       course_id: z.number().describe('The Canvas course ID'),
-      search_term: z.string().describe('Search term to find in modules and assignments'),
+      search_term: z.string()
+        .describe('Search term. Matched against module item titles, assignment names, and page titles AND page bodies.'),
     },
     async ({ course_id, search_term }) => {
       try {
@@ -193,6 +194,15 @@ export function registerSearchTools(server: McpServer) {
             due_at: a.due_at,
             points_possible: a.points_possible,
             html_url: a.html_url,
+          })),
+          // Page hits are body matches as well as title matches, so this is often the
+          // only place a lecture or handout shows up. read_page resolves the links.
+          pages: results.pages.map(p => ({
+            page_id: p.page_id,
+            title: p.title,
+            url: p.url,
+            updated_at: p.updated_at,
+            next_step: `read_page(course_id: ${course_id}, page: "${p.url}")`,
           })),
         };
 

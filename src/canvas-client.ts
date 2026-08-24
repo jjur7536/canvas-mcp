@@ -13,6 +13,8 @@ import type {
   ListAnnouncementsParams,
   ListFilesParams,
   FileAttachment,
+  Page,
+  ListPagesParams,
 } from './types/canvas.js';
 
 interface CanvasClientConfig {
@@ -255,7 +257,7 @@ export class CanvasClient {
   async searchCourseContent(
     courseId: number,
     searchTerm: string
-  ): Promise<{ modules: Module[]; assignments: Assignment[] }> {
+  ): Promise<{ modules: Module[]; assignments: Assignment[]; pages: Page[] }> {
     // Search modules
     const modules = await this.listModules(courseId, {
       search_term: searchTerm,
@@ -267,7 +269,19 @@ export class CanvasClient {
       search_term: searchTerm,
     });
 
-    return { modules, assignments };
+    // Search pages. Canvas matches search_term against page body as well as title,
+    // so this is the only route to material that exists only inside a page.
+    let pages: Page[] = [];
+    try {
+      pages = await this.listPages(courseId, { search_term: searchTerm });
+    } catch {
+      // Index disabled: fall back to module-listed pages, matched on title alone.
+      const needle = searchTerm.toLowerCase();
+      const viaModules = await this.listPagesViaModules(courseId).catch(() => []);
+      pages = viaModules.filter(p => p.title.toLowerCase().includes(needle));
+    }
+
+    return { modules, assignments, pages };
   }
 
   async getUpcomingAssignments(
@@ -355,6 +369,52 @@ export class CanvasClient {
     }
 
     return { file, data: new Uint8Array(await response.arrayBuffer()) };
+  }
+
+  // ==================== PAGES ====================
+
+  async listPages(courseId: number, params: ListPagesParams = {}): Promise<Page[]> {
+    return this.requestAllPages<Page>(`/courses/${courseId}/pages`, params);
+  }
+
+  /**
+   * Fetch one page including its body. `pageIdentifier` is the page's URL slug or its
+   * numeric page_id — module items report the slug as `page_url`.
+   */
+  async getPage(courseId: number, pageIdentifier: string | number): Promise<Page> {
+    return this.request<Page>(
+      `/courses/${courseId}/pages/${encodeURIComponent(String(pageIdentifier))}`
+    );
+  }
+
+  async getFrontPage(courseId: number): Promise<Page> {
+    return this.request<Page>(`/courses/${courseId}/front_page`);
+  }
+
+  /**
+   * Rebuild the page list from module items. Units commonly disable the Pages index
+   * ("That page has been disabled for this course") while still linking pages from
+   * modules, and individual pages stay readable — so the index being off must not
+   * mean the pages are unreachable. Titles only: there is no body to match against.
+   */
+  async listPagesViaModules(courseId: number): Promise<Page[]> {
+    const modules = await this.listModules(courseId, { include: ['items'] });
+    const seen = new Map<string, Page>();
+
+    for (const mod of modules) {
+      for (const item of mod.items ?? []) {
+        if (item.type !== 'Page' || !item.page_url) continue;
+        if (seen.has(item.page_url)) continue;
+        seen.set(item.page_url, {
+          page_id: item.id,
+          url: item.page_url,
+          title: item.title,
+          html_url: item.html_url,
+        });
+      }
+    }
+
+    return [...seen.values()];
   }
 
   // ==================== USER INFO ====================

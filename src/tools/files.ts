@@ -67,9 +67,11 @@ export function registerFileTools(server: McpServer) {
           return fail(
             'listing course files',
             new Error(
-              `${message}\nThis course hides its Files index from students. ` +
-                `Call list_modules(course_id: ${course_id}) instead — each File item's ` +
-                `content_id is the file_id that read_file and download_file expect.`
+              `${message}\nThis course hides its Files index from students. Two fallbacks:\n` +
+                `1. list_modules(course_id: ${course_id}) — each File item's content_id is the file_id.\n` +
+                `2. list_linked_files(course_id: ${course_id}) — walks the course's pages and ` +
+                `returns every file_id linked from them, which is where units that hide Files ` +
+                `usually keep the lecture PDFs.`
             )
           );
         }

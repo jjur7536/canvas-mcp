@@ -43,6 +43,9 @@ export function registerModuleTools(server: McpServer) {
             position: item.position,
             html_url: item.html_url,
             content_id: item.content_id,
+            // Page items carry no content_id; page_url is the slug read_page wants.
+            page_url: item.page_url,
+            external_url: item.external_url,
             completion_requirement: item.completion_requirement,
             content_details: item.content_details,
           })) : undefined,

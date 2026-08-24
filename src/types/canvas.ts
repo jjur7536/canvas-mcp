@@ -402,3 +402,32 @@ export interface ListFilesParams {
   sort?: 'name' | 'size' | 'created_at' | 'updated_at' | 'content_type';
   order?: 'asc' | 'desc';
 }
+
+// ==================== PAGES ====================
+
+/**
+ * A Canvas wiki page. Most units publish their weekly content, assessment overview
+ * and FAQ as pages, so `body` is where the links to lecture PDFs actually live.
+ * Canvas omits `body` from the list endpoint — only the single-page GET returns it.
+ */
+export interface Page {
+  page_id: number;
+  url: string;
+  title: string;
+  created_at?: string;
+  updated_at?: string;
+  body?: string;
+  published?: boolean;
+  front_page?: boolean;
+  locked_for_user?: boolean;
+  lock_explanation?: string;
+  html_url?: string;
+}
+
+export interface ListPagesParams {
+  /** Canvas matches this against page title AND body. */
+  search_term?: string;
+  sort?: 'title' | 'created_at' | 'updated_at';
+  order?: 'asc' | 'desc';
+  published?: boolean;
+}

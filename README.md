@@ -186,6 +186,10 @@ You should now see Canvas tools available in Claude!
 - **Read a lecture PDF or `.docx` as text, page by page**
 - Download a file to disk
 
+### 📃 Pages
+- **Read a Canvas page as text, with every link resolved to a `file_id` you can act on**
+- Rebuild a course's file catalogue from its pages when the Files tab is hidden
+
 ### 🔍 Search
 - Find assignments by due date
 - Search course content
@@ -213,12 +217,15 @@ You should now see Canvas tools available in Claude!
 | `find_assignments_by_due_date` | Find assignments in a date range |
 | `get_upcoming_assignments` | Get work due in the next N days |
 | `get_overdue_assignments` | Find past-due work |
-| `search_course_content` | Search modules and assignments |
+| `search_course_content` | Search module items, assignment names, and page titles + bodies |
 | `get_all_upcoming_work` | Upcoming work across ALL courses |
 | `list_course_files` | List a course's files (403s where the Files tab is hidden) |
 | `get_file` | File metadata, including lock/unlock state |
 | `read_file` | **Read a lecture PDF or `.docx` as text, by page** |
 | `download_file` | Save a file to disk |
+| `list_pages` | List a course's pages (falls back to module items where the Pages index is off) |
+| `read_page` | **Read a page as text, with links resolved to file IDs** |
+| `list_linked_files` | Every file linked from any page — the catalogue when `list_course_files` 403s |
 
 ### Reading course material
 
@@ -240,6 +247,43 @@ tutorial solutions until partway through the week, and that gate is worth preser
 
 `list_course_files` 403s in units that hide the student Files tab, which is common. The error
 says so and points at `list_modules`, which always works.
+
+### Material that lives inside a page
+
+Modules are not where most units put their material. A typical unit has a *Weekly Unit
+Content* page holding a table with one row per week, and every lecture PDF, lab handout and
+task brief hangs off that table as an inline link. None of it is a module item, and in units
+that hide the Files tab none of it is in `list_course_files` either. Read the page:
+
+```
+list_modules(course_id: 73895)                 → a Page item reports its slug as page_url
+read_page(course_id: 73895, page: "weekly-unit-content")
+read_file(file_id: 52075212)                   → a file_id straight out of the link list
+```
+
+`read_page` renders the body as text — tables included, since weekly-content pages are almost
+always tables — leaving a `[->N]` marker wherever a link sat, and appends a numbered list
+resolving each one:
+
+```
+[->29] Lec 4A - C++xx _ Pointers.pdf  (file 52060667) — read_file(file_id: 52060667)
+[->33] Task 4 Agent  (page "task-4-agent") — read_page(page: "task-4-agent")
+[->48] Practice Exam  (assignment 690430) — get_assignment(assignment_id: 690430)
+```
+
+File, page, assignment, quiz, discussion, module-item and LTI links are each classified from
+`data-api-endpoint` where Canvas supplies it and the href otherwise. `links_only: true` skips
+the body when you are only after an ID on a long page.
+
+`list_linked_files` walks every page in a course and returns the deduplicated set of files
+linked from them. That is the real answer to a hidden Files tab: it reconstructs the catalogue
+the unit meant you to have.
+
+Units disable the Pages *index* as readily as the Files tab — `/pages` returns *"That page has
+been disabled for this course"* — but individual pages stay readable. So `list_pages` and
+`list_linked_files` fall back to enumerating pages from module items, and label the result
+`source: "modules"` with a note saying what the fallback cannot do (match page bodies, or see
+pages no module links).
 
 ---
 
@@ -270,6 +314,13 @@ being blocked by config, so no permission slip can reinstate them.
 tutorial sheets — the actual content of a unit — were unreachable. `read_file`,
 `download_file`, `get_file` and `list_course_files` close that gap. See
 [Reading course material](#reading-course-material).
+
+**5. Page reading added.** Files and modules were still not enough: units keep their weekly
+content, assessment overviews and FAQs in Canvas *pages*, and the material hangs off those
+pages as inline links. Neither `list_modules` nor `list_course_files` can see any of it, so a
+whole class of course material was invisible. `read_page`, `list_pages` and `list_linked_files`
+close that gap, and `search_course_content` now searches page bodies. See
+[Material that lives inside a page](#material-that-lives-inside-a-page).
 
 Run `node scripts/smoke-test.mjs` against a real token to re-verify the first three.
 
@@ -324,6 +375,7 @@ canvas-mcp/
 │   ├── index.ts           # MCP server entry point
 │   ├── canvas-client.ts   # Canvas API wrapper (handles pagination)
 │   ├── extract.ts         # PDF/.docx → page-addressable text
+│   ├── html.ts            # page body → text + resolved links
 │   ├── tools/             # Tool implementations
 │   │   ├── courses.ts
 │   │   ├── assignments.ts
@@ -331,6 +383,7 @@ canvas-mcp/
 │   │   ├── discussions.ts
 │   │   ├── modules.ts
 │   │   ├── files.ts       # read_file / download_file / get_file
+│   │   ├── pages.ts       # read_page / list_pages / list_linked_files
 │   │   └── search.ts
 │   └── types/
 │       └── canvas.ts      # TypeScript types
