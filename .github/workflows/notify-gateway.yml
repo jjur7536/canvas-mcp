@@ -1,0 +1,23 @@
+# Copy of the workflow installed in every backend repo as
+# .github/workflows/notify-gateway.yml (scripts/setup-ci.sh does the copying).
+# On push to main it asks mcp-gateway to redeploy, so a new tool reaches the phone
+# a few minutes after the push.
+
+name: notify mcp-gateway
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask mcp-gateway to redeploy
+        env:
+          GH_TOKEN: ${{ secrets.GATEWAY_DISPATCH_TOKEN }}
+        run: |
+          gh api repos/jjur7536/mcp-gateway/dispatches \
+            -f event_type=backend-updated \
+            -f "client_payload[repo]=${{ github.repository }}" \
+            -f "client_payload[sha]=${{ github.sha }}"
