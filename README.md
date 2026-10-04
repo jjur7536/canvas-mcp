@@ -93,6 +93,47 @@ Linux path (`/home/<user>/dev/canvas-mcp/dist/index.js`). A Windows client canno
 
 ---
 
+## Personalise it for your units
+
+Nothing is hard-coded to one person, university or set of subjects: the token and
+`CANVAS_BASE_URL` are the only per-user configuration. Once installed, personalising is two
+steps, and an agent can do both.
+
+**1. Map the user's units.** Call `list_courses` to get each current unit's `course_id`. For
+each unit, find where its material actually lives: module items (`list_modules`), files linked
+from a page such as *Weekly Unit Content* (`list_pages` → `read_page`), or Ed instead of
+Canvas. Many units keep some or all of their material on Ed; the companion server
+[`ed-mcp`](https://github.com/jjur7536/ed-mcp) covers that, and most people want both.
+
+**2. Write the mapping into the user's agent instructions**, so future sessions fetch material
+without being told. Add a block like this to `~/.claude/CLAUDE.md` (Claude Code, every
+session) or to a course repo's `CLAUDE.md` / `AGENTS.md`, with the table filled in:
+
+```markdown
+## Course material comes from MCP, never from me downloading files
+
+My course material is reachable through MCP. Fetch it rather than asking me to download or
+paste anything.
+
+- `canvas`: `list_modules` → `read_file(file_id, pages)` (a module File item's `content_id`
+  is the `file_id`). Where material hangs off a page, use `read_page` or `list_linked_files`.
+- `ed` (if installed): `list_resources` → `read_resource`; `list_lessons` → `read_lesson`;
+  `search_threads` for staff clarifications.
+
+Cite sources as "lecture 5, page 12" so answers are checkable. Locked files report their
+unlock date: respect it and never work around it.
+
+| Unit | Canvas course id | Where the material is |
+|------|------------------|-----------------------|
+| UNIT1001 | 12345 | Canvas page "weekly-unit-content" |
+| UNIT2002 | 12346 | Canvas modules (lectures); Ed resources (tutorials) |
+| ... | ... | ... |
+```
+
+Re-run step 1 at the start of each semester, because course ids change with every offering.
+
+---
+
 ## Quick Start (manual)
 
 ### 1. Get Your Canvas API Token
@@ -289,7 +330,7 @@ pages no module links).
 
 ## Fork changes
 
-This fork diverges from `lucanardinocchi/canvas-mcp` in four ways.
+This fork diverges from `lucanardinocchi/canvas-mcp` in five ways.
 
 **1. Pagination on every list endpoint.** Canvas returns 10 items per page by
 default. Upstream only paginated `/courses`; every other list call took the
@@ -393,6 +434,9 @@ canvas-mcp/
 ├── package.json
 └── tsconfig.json
 ```
+
+`.github/workflows/notify-gateway.yml` is the maintainer's deploy hook for a private hosting
+setup. It does nothing for a clone; delete it if you fork the repo.
 
 ---
 
